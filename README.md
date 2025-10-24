@@ -1,7 +1,6 @@
 # DL-Prac-10_Project_VII_B_70
 
-# Project: Probabilistic Deep Learning for Reliable Image Classification and Uncertainty Quantification
-
+# Project: Uncertainty Quantification in Deep Learning for Image Classification
 **Author:** Devesh Vyas
 **Course:** B.Tech CSE-Data Science (Final Year) 
 
@@ -9,44 +8,46 @@
 
 ## 1. Problem Statement
 
-Standard deep learning classifiers, like a Convolutional Neural Network (CNN), are powerful but have a critical flaw: they are often **overconfident**.
+Standard Deep Learning models, such as Convolutional Neural Networks (CNNs), are powerful but have a significant flaw: they are often **overconfident**. A standard CNN will output a prediction (e.g., "This is a '5'") with high confidence, even when it is wrong.
 
-When trained to classify images (e.g., shirts, trousers, shoes), a standard CNN will still try to classify a completely unrelated image (e.g., a handwritten digit, a cat) as one of the known categories, often with a very high (but wrong) confidence score. This "confidently wrong" behavior is dangerous in real-world systems like medical diagnosis or self-driving cars.
+Furthermore, they have no reliable mechanism to identify **Out-of-Distribution (OOD)** data. If a model is trained only on handwritten digits (0-9), and you show it a picture of a cat, it will still confidently (and incorrectly) classify it as one of the digits. This lack of "self-awareness" is dangerous for real-world applications like medical diagnosis or autonomous driving.
 
-The objective of this project is to build and compare deep learning models that can **quantify their own uncertainty**. A reliable model should not only be accurate on data it has seen before (in-distribution) but also express high uncertainty—effectively saying "I don't know"—when shown new, unfamiliar types of data (out-of-distribution).
+This project solves this problem by exploring, analyzing, and applying **Probabilistic Deep Learning (PDL)** models. These models are designed to quantify their own uncertainty, allowing them to:
+1.  Express low confidence on ambiguous or difficult predictions.
+2.  Signal high uncertainty when faced with novel OOD data.
 
 ## 2. Explanation & Solution
 
-We will solve this problem by comparing three models trained on the **Fashion-MNIST** dataset. We will then test their ability to identify **MNIST** (handwritten digits) as "unknown" or "out-of-distribution" (OOD).
+To address the problem, we build and compare three different models trained on the **MNIST** dataset of handwritten digits. We then test their "honesty" by evaluating them on both the MNIST test set (In-Distribution) and the **Fashion-MNIST** dataset (Out-of-Distribution).
 
 ### Dataset Links
 
-* **In-Distribution (Training):** [Fashion-MNIST](https://github.com/zalandoresearch/fashion-mnist) - A dataset of 70,000 grayscale images (28x28) of 10 clothing categories.
-* **Out-of-Distribution (OOD):** [MNIST](http://yann.lecun.com/exdb/mnist/) - A dataset of 70,000 grayscale images (28x28) of 10 handwritten digits.
+The datasets are loaded directly from the `tf.keras.datasets` API.
+* **In-Distribution (ID):** [MNIST Handwritten Digits](http://yann.lecun.com/exdb/mnist/)
+    * `tf.keras.datasets.mnist.load_data()`
+* **Out-of-Distribution (OOD):** [Fashion-MNIST](https://github.com/zalandoresearch/fashion-mnist)
+    * `tf.keras.datasets.fashion_mnist.load_data()`
 
 ### Techniques Used
 
-1.  **Model 1: Baseline (Deterministic) CNN**
-    * **Architecture:** A standard Keras `Sequential` model with `Conv2D`, `MaxPooling2D`, `Flatten`, and `Dense` layers.
-    * **Output:** A 10-unit `softmax` layer, giving a single probability distribution.
-    * **Hypothesis:** This model will be accurate on the Fashion-MNIST test set but will produce high-confidence (but incorrect) predictions on the MNIST dataset.
+1.  **Baseline: Standard (Deterministic) CNN**
+    * **What it is:** A regular Keras CNN. Its weights are single, fixed numbers.
+    * **Prediction:** Outputs a single probability distribution. It is deterministic, meaning the same input will always produce the same output.
+    * **Hypothesis:** It will be overconfident on incorrect predictions and OOD data.
 
-2.  **Model 2: Probabilistic CNN via MC Dropout**
-    * **Architecture:** The *same* CNN, but with `Dropout` layers added after `Conv2D` and `Dense` layers.
-    * **Technique:** Dropout is a regularization technique, but it can be re-purposed as a Bayesian approximation. We keep dropout **active during inference** (testing) and run the prediction 50-100 times for the *same image*.
-    * **Output:** We get 100 different `softmax` predictions. The *mean* of these is our final prediction. The **variance (or entropy)** of these predictions is our measure of uncertainty.
-    * **Hypothesis:** This model will show low variance (high confidence) for Fashion-MNIST images and high variance (low confidence) for MNIST digit images.
+2.  **Technique 1: Monte Carlo (MC) Dropout**
+    * **What it is:** A standard CNN with `Dropout` layers. The "trick" is that we keep `Dropout` **active during inference (testing)**.
+    * **Prediction:** We run the same input through the model 100 times. Because `Dropout` randomly deactivates different neurons each time, we get 100 different predictions.
+    * **Uncertainty:** The **variance (or spread)** of these 100 predictions tells us the model's uncertainty. If all 100 predictions are the same, the model is certain. If they are all over the place, the model is uncertain. This is a practical approximation of Bayesian inference.
 
-3.  **Model 3: Bayesian Neural Network (BNN)**
-    * **Architecture:** A similar CNN structure, but we replace standard Keras layers with probabilistic layers from the **TensorFlow Probability (TFP)** library (e.g., `tfp.layers.Convolution2DReparameterization`, `tfp.layers.DenseReparameterization`).
-    * **Technique:** In this model, each **weight is a probability distribution** (e.g., a Gaussian) instead of a single number. The model learns the `mean` and `standard deviation` for every weight.
-    * **Loss Function:** The loss is a combination of the standard (cross-entropy) loss and a **KL Divergence** term, which regularizes the model's complexity. This is based on Variational Inference.
-    * **Hypothesis:** This model will explicitly learn the model's uncertainty. Like MC Dropout, it should produce predictions with high uncertainty for the OOD (MNIST) dataset.
+3.  **Technique 2: Bayesian Neural Network (BNN)**
+    * **What it is:** A true probabilistic model built using **TensorFlow Probability (TFP)**.
+    * **How it works:** Instead of learning a single fixed value for each weight, a BNN learns a full **probability distribution** (e.g., a mean and a standard deviation) for every weight in the network. We use `tfp.layers.DenseFlipout` for this.
+    * **Prediction:** A single pass through the network involves *sampling* weights from these distributions. By passing the same input 100 times, we get 100 different predictions.
+    * **Uncertainty:** Like MC Dropout, we measure the variance of the predictions. This is a more principled, but computationally heavier, way to model uncertainty.
 
 ## 3. Evaluation
 
-The models will be compared on two criteria:
-1.  **Accuracy:** Standard classification accuracy on the Fashion-MNIST test set.
-2.  **Uncertainty Quantification:** We will feed both Fashion-MNIST (in-distribution) and MNIST (out-of-distribution) images to all three models. We will then plot histograms of their uncertainty scores (e.g., predictive entropy).
-
-**Success:** A successful probabilistic model (MC Dropout, BNN) will show two clearly separated distributions: one for low uncertainty (for Fashion-MNIST) and one for high uncertainty (for MNIST). The baseline CNN will fail this test.
+* **Incorrect In-Distribution Predictions:** When the Standard CNN misclassifies an MNIST digit, it remains highly confident. The MC Dropout and BNN models correctly show high uncertainty, with probabilities spread across multiple possible digits.
+* **Out-of-Distribution Data:** When shown a T-shirt from Fashion-MNIST, the Standard CNN confidently (and absurdly) predicts it's a digit. The MC Dropout and BNN models show very high uncertainty (a flat, uniform-like probability distribution), which is the correct way to say **"I don't know what this is."**
+* **Entropy Plots:** The final histograms clearly show that the predictive entropy (a measure of uncertainty) for OOD data (Fashion-MNIST) is significantly higher and more separated for the BNN and MC Dropout models compared to the standard CNN.
